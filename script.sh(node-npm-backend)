@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+# for node backend
 # to run . script.sh
 # this script is for node ,packagemanager npm,
 # Note: We omit -e to prevent unintentional shell exit; errors are handled via trap
-# Online Notepad website: https://www.jdoodle.com/test-bash-shell-script-online
-# if you want to add domain make sure it is on route53 
 set -u -o pipefail
 
 # Trap errors and report the current step, but do not kill the interactive shell
@@ -21,8 +20,17 @@ DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app.git"
 DEFAULT_BRANCH="main"
 DEFAULT_PM2_NAME="node-app"
 DEFAULT_DOMAIN="taimoor.quecko.org"
-DEFAULT_WETHER_TO_ATTACH_DOMAIN=true  # true = configure nginx+certbot, false = skip
+DEFAULT_WETHER_TO_ATTACH_DOMAIN=false  # true = configure nginx+certbot, false = skip
 # ────────────────────────────────────────────────────────────────────────────────
+# ─── Your .env defaults (copy-paste here) ────────────────────────────────────
+DEFAULT_ENV_CONTENT="$(cat <<'EOF'
+PORT=3001
+DB_HOST=localhost
+DB_USER=user
+DB_PASS=pass
+EOF
+)"
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Pick up args or fall back
 STEP="Parsing arguments"
@@ -79,10 +87,9 @@ cd "$DIR_NAME" || return 1
 
 # 6) Create .env
 STEP="Creating .env file"
-cat << 'EOF' > .env
-PORT=3000
-EOF
- echo "✅ Created .env:"
+echo "$DEFAULT_ENV_CONTENT" > .env
+
+echo "✅ Created .env:"
 cat .env
 
 # 7) Install dependencies
