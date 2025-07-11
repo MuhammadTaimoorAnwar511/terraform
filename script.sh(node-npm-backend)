@@ -2,6 +2,8 @@
 # to run . script.sh
 # this script is for node ,packagemanager npm,
 # Note: We omit -e to prevent unintentional shell exit; errors are handled via trap
+# Online Notepad website: https://www.jdoodle.com/test-bash-shell-script-online
+# if you want to add domain make sure it is on route53 
 set -u -o pipefail
 
 # Trap errors and report the current step, but do not kill the interactive shell
