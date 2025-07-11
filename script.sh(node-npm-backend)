@@ -20,14 +20,13 @@ DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app.git"
 DEFAULT_BRANCH="main"
 DEFAULT_PM2_NAME="node-app"
 DEFAULT_DOMAIN="taimoor.quecko.org"
-DEFAULT_WETHER_TO_ATTACH_DOMAIN=false  # true = configure nginx+certbot, false = skip
+DEFAULT_WETHER_TO_ATTACH_DOMAIN=false                                          # true = configure nginx+certbot, false = skip
+DEFAULT_GIT_PAT_TOKEN=""               # e.g. "ghp_YourPersonalAccessTokenHere"
+DEFAULT_GIT_REPO_VISIBILITY_PRIVATE=true                                       # true=private repo (use PAT), false=public repo
 # ────────────────────────────────────────────────────────────────────────────────
 # ─── Your .env defaults (copy-paste here) ────────────────────────────────────
 DEFAULT_ENV_CONTENT="$(cat <<'EOF'
 PORT=3001
-DB_HOST=localhost
-DB_USER=user
-DB_PASS=pass
 EOF
 )"
 # ─────────────────────────────────────────────────────────────────────────────
@@ -39,6 +38,8 @@ BRANCH="${2:-$DEFAULT_BRANCH}"
 PM2_NAME="${3:-$DEFAULT_PM2_NAME}"
 DOMAIN="${4:-$DEFAULT_DOMAIN}"
 ATTACH_DOMAIN="${5:-$DEFAULT_WETHER_TO_ATTACH_DOMAIN}"
+PAT_TOKEN="${6:-$DEFAULT_GIT_PAT_TOKEN}"
+REPO_PRIVATE="${7:-$DEFAULT_GIT_REPO_VISIBILITY_PRIVATE}"
 
 # Derive directory name (e.g. "node-app")
 STEP="Deriving directory name"
@@ -77,8 +78,20 @@ if [[ -d "$DIR_NAME" ]]; then
   return 1
 fi
 
-echo "🔄 Cloning branch '$BRANCH' from '$GIT_URL'..."
-git clone --branch "$BRANCH" --single-branch "$GIT_URL" || return 1
+# Determine clone URL based on visibility
+if [[ "$REPO_PRIVATE" == "true" ]]; then
+  if [[ -z "$PAT_TOKEN" ]]; then
+    echo "❌ Error: Private repo specified but PAT_TOKEN is empty."
+    return 1
+  fi
+  BASE_URL="${GIT_URL#https://}"
+  AUTH_GIT_URL="https://${PAT_TOKEN}@${BASE_URL}"
+else
+  AUTH_GIT_URL="$GIT_URL"
+fi
+
+echo "🔄 Cloning branch '$BRANCH' from '$GIT_URL' (private=$REPO_PRIVATE)..."
+git clone --branch "$BRANCH" --single-branch "$AUTH_GIT_URL" || return 1
 
 # 5) cd into it
 STEP="Changing directory"
