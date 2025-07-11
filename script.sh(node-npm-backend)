@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# to run . script.sh
+# this script is for node ,packagemanager npm,
+# Note: We omit -e to prevent unintentional shell exit; errors are handled via trap
+set -u -o pipefail
+
+# Trap errors and report the current step, but do not kill the interactive shell
+STEP="Initialization"
+error_handler() {
+  echo "❌ Error during: $STEP"
+  # Stop executing further lines in this script
+  return 1
+}
+trap error_handler ERR
+
+# ─── Defaults ─────────────────────────────────────────────────────────────────
+STEP="Setting defaults"
+DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app.git"
+DEFAULT_BRANCH="main"
+DEFAULT_PM2_NAME="node-app"
+DEFAULT_DOMAIN="taimoor.quecko.org"
+DEFAULT_WETHER_TO_ATTACH_DOMAIN=true  # true = configure nginx+certbot, false = skip
+# ────────────────────────────────────────────────────────────────────────────────
+
+# Pick up args or fall back
+STEP="Parsing arguments"
+GIT_URL="${1:-$DEFAULT_GIT_URL}"
+BRANCH="${2:-$DEFAULT_BRANCH}"
+PM2_NAME="${3:-$DEFAULT_PM2_NAME}"
+DOMAIN="${4:-$DEFAULT_DOMAIN}"
+ATTACH_DOMAIN="${5:-$DEFAULT_WETHER_TO_ATTACH_DOMAIN}"
+
+# Derive directory name (e.g. "node-app")
+STEP="Deriving directory name"
+DIR_NAME="$(basename "${GIT_URL%.git}")"
+
+# 1) Install nvm → node & npm
+STEP="Installing Node & npm"
+if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+  echo "ℹ️  Node or npm not found. Installing NVM + Node LTS..."
+  export NVM_DIR="$HOME/.nvm"
+  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+  fi
+  . "$NVM_DIR/nvm.sh"
+  nvm install --lts
+fi
+
+# 2) Install pm2 if missing
+STEP="Installing PM2"
+if ! command -v pm2 >/dev/null; then
+  echo "ℹ️  PM2 not found. Installing globally..."
+  npm install -g pm2
+fi
+
+# 3) Install serve if missing
+STEP="Installing serve"
+if ! command -v serve >/dev/null; then
+  echo "ℹ️  serve not found. Installing globally..."
+  npm install -g serve
+fi
+
+# 4) Clone the repo
+STEP="Cloning repository"
+if [[ -d "$DIR_NAME" ]]; then
+  echo "❌ Error: directory '$DIR_NAME' already exists."
+  return 1
+fi
+
+echo "🔄 Cloning branch '$BRANCH' from '$GIT_URL'..."
+git clone --branch "$BRANCH" --single-branch "$GIT_URL" || return 1
+
+# 5) cd into it
+STEP="Changing directory"
+echo "📂 Entering directory '$DIR_NAME'..."
+cd "$DIR_NAME" || return 1
+
+# 6) Create .env
+STEP="Creating .env file"
+cat << 'EOF' > .env
+PORT=3000
+EOF
+ echo "✅ Created .env:"
+cat .env
+
+# 7) Install dependencies
+STEP="Installing dependencies"
+echo "📦 Installing dependencies via npm..."
+npm install || return 1
+
+# 8) Start under PM2
+STEP="Starting application with PM2"
+echo "🚀 Starting app with PM2 as '$PM2_NAME'..."
+pm2 start "npm start" --name "$PM2_NAME" || return 1
+
+# 9) Save PM2 process list
+STEP="Saving PM2 process list"
+echo "💾 Saving PM2 process list..."
+pm2 save || return 1
+
+# 10) Optional: Setup nginx reverse proxy + TLS
+STEP="Configuring nginx + TLS"
+if [[ "$ATTACH_DOMAIN" == "true" ]]; then
+  # 10.1 Install nginx if missing
+  STEP="Installing nginx"
+  if ! command -v nginx >/dev/null; then
+    echo "ℹ️  Nginx not found. Installing Nginx..."
+    sudo apt-get update && sudo apt-get install -y nginx || return 1
+  fi
+
+  # 10.2 Ensure certbot present
+  STEP="Installing certbot"
+  if ! command -v certbot >/dev/null; then
+    echo "ℹ️  Certbot not found. Installing Certbot..."
+    sudo apt-get install -y certbot python3-certbot-nginx || return 1
+  fi
+
+  # 10.3 Create nginx site config
+  STEP="Creating nginx site config"
+  SITE_CONF="/etc/nginx/sites-available/$DOMAIN"
+  echo "📝 Creating Nginx config for $DOMAIN..."
+  sudo tee "$SITE_CONF" > /dev/null <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    location / {
+        proxy_pass http://localhost:$(grep -oP '(?<=PORT=)\d+' .env);
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+  # 10.4 Enable site
+  STEP="Enabling nginx site"
+  sudo rm -f /etc/nginx/sites-enabled/default || return 1
+  sudo ln -sf "$SITE_CONF" /etc/nginx/sites-enabled/ || return 1
+
+  # 10.5 Test & reload Nginx
+  STEP="Testing & reloading nginx"
+  echo "🔧 Testing Nginx configuration..."
+  sudo nginx -t && sudo systemctl restart nginx || return 1
+
+  # 10.6 Obtain TLS certificate
+  STEP="Obtaining TLS certificate"
+  echo "🔒 Obtaining TLS cert for $DOMAIN..."
+  sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" || return 1
+  echo "✅ SSL certificate obtained."
+fi
+
+STEP="Complete"
+echo "🎉 Setup complete! You’re in $(pwd), with your app running under PM2 ('$PM2_NAME') and nginx configured for $DOMAIN if requested."
