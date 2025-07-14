@@ -15,8 +15,8 @@ trap error_handler ERR
 STEP="Setting defaults"
 # ───----------─────────────────────────────────────────────────────────────────
 
-DOMAIN="taimoor.quecko.org"     # domain name (leave empty to skip nginx/certbot)
-PORT=3000                       # application port
+DOMAIN=""     # domain name (leave empty to skip nginx/certbot)
+PORT=                       # application port
 
 # ─── Optional: Setup nginx reverse proxy & TLS via Certbot ───────────────────
 
