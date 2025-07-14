@@ -1,53 +1,57 @@
 #!/usr/bin/env bash
-# for node backend
-# to run . script.sh
-# this script is for node ,packagemanager npm,
-# Note: We omit -e to prevent unintentional shell exit; errors are handled via trap
+# for node backend deployment
+# Usage: . script.sh [GIT_URL] [BRANCH] [PM2_NAME] [DOMAIN] [ATTACH_DOMAIN] [PAT_TOKEN] [REPO_PRIVATE] [PACKAGE_MANAGER]
+# Note: errors are trapped and reported without killing your shell
 # online web: https://www.jdoodle.com/test-bash-shell-script-online
-# chmod 661 <script.sh>
-set -u -o pipefail
+# chmod 755 <script.sh>
 
-# Trap errors and report the current step, but do not kill the interactive shell
+set -u -o pipefail
 STEP="Initialization"
 error_handler() {
-  echo "❌ Error during: $STEP"
-  # Stop executing further lines in this script
+  echo "❌ Error during: $STEP" >&2
   return 1
 }
 trap error_handler ERR
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 STEP="Setting defaults"
-DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app.git"
+DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app-yarn.git"
 DEFAULT_BRANCH="main"
-DEFAULT_PM2_NAME="node-app"
+DEFAULT_PM2_NAME="node-app-yarn"
 DEFAULT_DOMAIN="taimoor.quecko.org"
-DEFAULT_WETHER_TO_ATTACH_DOMAIN=false                                          # true = configure nginx+certbot, false = skip
-DEFAULT_GIT_PAT_TOKEN=""               # e.g. "ghp_YourPersonalAccessTokenHere"
-DEFAULT_GIT_REPO_VISIBILITY_PRIVATE=true                                       # true=private repo (use PAT), false=public repo
-# ────────────────────────────────────────────────────────────────────────────────
-# ─── Your .env defaults (copy-paste here) ────────────────────────────────────
+DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip
+DEFAULT_GIT_PAT_TOKEN=""         # e.g. "ghp_YourPersonalAccessTokenHere"
+DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT), false=public repo
+DEFAULT_PACKAGE_MANAGER="yarn"    # "npm" or "yarn"
+# Your .env content (here-doc)
 DEFAULT_ENV_CONTENT="$(cat <<'EOF'
-PORT=3001
+PORT=3000
+# add more ENV vars here...
 EOF
 )"
-# ─────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────
 
-# Pick up args or fall back
+# ─── Parse args or fall back to defaults ──────────────────────────────────────
 STEP="Parsing arguments"
 GIT_URL="${1:-$DEFAULT_GIT_URL}"
 BRANCH="${2:-$DEFAULT_BRANCH}"
 PM2_NAME="${3:-$DEFAULT_PM2_NAME}"
 DOMAIN="${4:-$DEFAULT_DOMAIN}"
-ATTACH_DOMAIN="${5:-$DEFAULT_WETHER_TO_ATTACH_DOMAIN}"
+ATTACH_DOMAIN="${5:-$DEFAULT_ATTACH_DOMAIN}"
 PAT_TOKEN="${6:-$DEFAULT_GIT_PAT_TOKEN}"
-REPO_PRIVATE="${7:-$DEFAULT_GIT_REPO_VISIBILITY_PRIVATE}"
+REPO_PRIVATE="${7:-$DEFAULT_REPO_PRIVATE}"
+PACKAGE_MANAGER="${8:-$DEFAULT_PACKAGE_MANAGER}"
+# Validate package manager choice
+if [[ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" ]]; then
+  echo "⚠️  Invalid PACKAGE_MANAGER '$PACKAGE_MANAGER'; defaulting to npm."
+  PACKAGE_MANAGER="npm"
+fi
 
-# Derive directory name (e.g. "node-app")
+# ─── Derive directory name ────────────────────────────────────────────────────
 STEP="Deriving directory name"
 DIR_NAME="$(basename "${GIT_URL%.git}")"
 
-# 1) Install nvm → node & npm
+# ─── Install Node (with NVM) & npm ────────────────────────────────────────────
 STEP="Installing Node & npm"
 if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   echo "ℹ️  Node or npm not found. Installing NVM + Node LTS..."
@@ -55,35 +59,38 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
     curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
   fi
+  # shellcheck source=/dev/null
   . "$NVM_DIR/nvm.sh"
   nvm install --lts
 fi
 
-# 2) Install pm2 if missing
+# ─── If using Yarn: ensure it's installed globally ────────────────────────────
+if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
+  STEP="Installing Yarn"
+  if ! command -v yarn >/dev/null; then
+    echo "ℹ️  Yarn not found. Installing globally via npm..."
+    sudo npm install -g yarn
+  fi
+fi
+
+# ─── Install PM2 globally if missing ─────────────────────────────────────────
 STEP="Installing PM2"
 if ! command -v pm2 >/dev/null; then
   echo "ℹ️  PM2 not found. Installing globally..."
-  npm install -g pm2
+  sudo npm install -g pm2
 fi
 
-# 3) Install serve if missing
-STEP="Installing serve"
-if ! command -v serve >/dev/null; then
-  echo "ℹ️  serve not found. Installing globally..."
-  npm install -g serve
-fi
-
-# 4) Clone the repo
+# ─── Clone the repository ────────────────────────────────────────────────────
 STEP="Cloning repository"
 if [[ -d "$DIR_NAME" ]]; then
-  echo "❌ Error: directory '$DIR_NAME' already exists."
+  echo "❌ Error: directory '$DIR_NAME' already exists." >&2
   return 1
 fi
 
-# Determine clone URL based on visibility
+# build auth URL for private repos
 if [[ "$REPO_PRIVATE" == "true" ]]; then
   if [[ -z "$PAT_TOKEN" ]]; then
-    echo "❌ Error: Private repo specified but PAT_TOKEN is empty."
+    echo "❌ Error: private repo specified but PAT_TOKEN is empty." >&2
     return 1
   fi
   BASE_URL="${GIT_URL#https://}"
@@ -95,54 +102,61 @@ fi
 echo "🔄 Cloning branch '$BRANCH' from '$GIT_URL' (private=$REPO_PRIVATE)..."
 git clone --branch "$BRANCH" --single-branch "$AUTH_GIT_URL" || return 1
 
-# 5) cd into it
+# ─── Enter project directory ──────────────────────────────────────────────────
 STEP="Changing directory"
 echo "📂 Entering directory '$DIR_NAME'..."
 cd "$DIR_NAME" || return 1
 
-# 6) Create .env
+# ─── Create/update .env ──────────────────────────────────────────────────────
 STEP="Creating .env file"
 echo "$DEFAULT_ENV_CONTENT" > .env
-
-echo "✅ Created .env:"
+echo "✅ .env created with the following content:"
 cat .env
 
-# 7) Install dependencies
+# ─── Install project dependencies ────────────────────────────────────────────
 STEP="Installing dependencies"
-echo "📦 Installing dependencies via npm..."
-npm install || return 1
+echo "📦 Installing dependencies via $PACKAGE_MANAGER..."
+if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
+  yarn install || return 1
+else
+  npm install || return 1
+fi
 
-# 8) Start under PM2
+# ─── Start application under PM2 ─────────────────────────────────────────────
 STEP="Starting application with PM2"
-echo "🚀 Starting app with PM2 as '$PM2_NAME'..."
-pm2 start "npm start" --name "$PM2_NAME" || return 1
+echo "🚀 Starting app with PM2 as '$PM2_NAME' using $PACKAGE_MANAGER..."
+if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
+  pm2 start "yarn start" --name "$PM2_NAME" || return 1
+else
+  pm2 start "npm start" --name "$PM2_NAME" || return 1
+fi
 
-# 9) Save PM2 process list
+# ─── Save PM2 process list for resurrect ────────────────────────────────────
 STEP="Saving PM2 process list"
 echo "💾 Saving PM2 process list..."
 pm2 save || return 1
 
-# 10) Optional: Setup nginx reverse proxy + TLS
+# ─── Optional: Setup nginx reverse proxy & TLS via Certbot ───────────────────
 STEP="Configuring nginx + TLS"
 if [[ "$ATTACH_DOMAIN" == "true" ]]; then
-  # 10.1 Install nginx if missing
+  # Install Nginx if needed
   STEP="Installing nginx"
   if ! command -v nginx >/dev/null; then
-    echo "ℹ️  Nginx not found. Installing Nginx..."
+    echo "ℹ️  Installing Nginx..."
     sudo apt-get update && sudo apt-get install -y nginx || return 1
   fi
 
-  # 10.2 Ensure certbot present
+  # Install Certbot if needed
   STEP="Installing certbot"
   if ! command -v certbot >/dev/null; then
-    echo "ℹ️  Certbot not found. Installing Certbot..."
+    echo "ℹ️  Installing Certbot..."
     sudo apt-get install -y certbot python3-certbot-nginx || return 1
   fi
 
-  # 10.3 Create nginx site config
+  # Write Nginx site config
   STEP="Creating nginx site config"
   SITE_CONF="/etc/nginx/sites-available/$DOMAIN"
-  echo "📝 Creating Nginx config for $DOMAIN..."
+  echo "📝 Writing Nginx config for $DOMAIN..."
   sudo tee "$SITE_CONF" > /dev/null <<EOF
 server {
     listen 80;
@@ -159,22 +173,18 @@ server {
 }
 EOF
 
-  # 10.4 Enable site
+  # Enable & reload
   STEP="Enabling nginx site"
   sudo rm -f /etc/nginx/sites-enabled/default || return 1
   sudo ln -sf "$SITE_CONF" /etc/nginx/sites-enabled/ || return 1
-
-  # 10.5 Test & reload Nginx
   STEP="Testing & reloading nginx"
-  echo "🔧 Testing Nginx configuration..."
   sudo nginx -t && sudo systemctl restart nginx || return 1
 
-  # 10.6 Obtain TLS certificate
+  # Obtain SSL cert
   STEP="Obtaining TLS certificate"
-  echo "🔒 Obtaining TLS cert for $DOMAIN..."
   sudo certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" || return 1
-  echo "✅ SSL certificate obtained."
+  echo "✅ SSL certificate obtained for $DOMAIN."
 fi
 
 STEP="Complete"
-echo "🎉 Setup complete! You’re in $(pwd), with your app running under PM2 ('$PM2_NAME') and nginx configured for $DOMAIN if requested."
+echo "🎉 Setup complete! App is running under PM2 ('$PM2_NAME')."
