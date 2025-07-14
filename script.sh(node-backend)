@@ -15,14 +15,15 @@ trap error_handler ERR
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 STEP="Setting defaults"
-DEFAULT_GIT_URL="https://github.com/MuhammadTaimoorAnwar511/node-app-yarn.git"
-DEFAULT_BRANCH="main"
-DEFAULT_PM2_NAME="node-app-yarn"
-DEFAULT_DOMAIN="taimoor.quecko.org"
-DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip
-DEFAULT_GIT_PAT_TOKEN=""         # e.g. "ghp_YourPersonalAccessTokenHere"
-DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT), false=public repo
-DEFAULT_PACKAGE_MANAGER="yarn"    # "npm" or "yarn"
+DEFAULT_GIT_URL="" #git repo url
+DEFAULT_BRANCH="main"  #branch name
+DEFAULT_PM2_NAME="" #pm2 process name
+DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip, if you want to attach domain
+DEFAULT_DOMAIN="" # domain name
+DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT-Token), false=public repo
+DEFAULT_GIT_PAT_TOKEN=""         #"ghp_YourPersonalAccessTokenHere"
+DEFAULT_PACKAGE_MANAGER="npm"    # "npm" or "yarn"
+
 # Your .env content (here-doc)
 DEFAULT_ENV_CONTENT="$(cat <<'EOF'
 PORT=3000
@@ -33,18 +34,19 @@ EOF
 
 # ─── Parse args or fall back to defaults ──────────────────────────────────────
 STEP="Parsing arguments"
-GIT_URL="${1:-$DEFAULT_GIT_URL}"
-BRANCH="${2:-$DEFAULT_BRANCH}"
-PM2_NAME="${3:-$DEFAULT_PM2_NAME}"
-DOMAIN="${4:-$DEFAULT_DOMAIN}"
-ATTACH_DOMAIN="${5:-$DEFAULT_ATTACH_DOMAIN}"
-PAT_TOKEN="${6:-$DEFAULT_GIT_PAT_TOKEN}"
+GIT_URL="${1:-$DEFAULT_GIT_URL}"           
+BRANCH="${2:-$DEFAULT_BRANCH}"             
+PM2_NAME="${3:-$DEFAULT_PM2_NAME}"         
+DOMAIN="${4:-$DEFAULT_DOMAIN}"             
+ATTACH_DOMAIN="${5:-$DEFAULT_ATTACH_DOMAIN}" 
+PAT_TOKEN="${6:-$DEFAULT_GIT_PAT_TOKEN}"  
 REPO_PRIVATE="${7:-$DEFAULT_REPO_PRIVATE}"
 PACKAGE_MANAGER="${8:-$DEFAULT_PACKAGE_MANAGER}"
+
 # Validate package manager choice
 if [[ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" ]]; then
-  echo "⚠️  Invalid PACKAGE_MANAGER '$PACKAGE_MANAGER'; defaulting to npm."
-  PACKAGE_MANAGER="npm"
+  echo "⚠️  Invalid PACKAGE_MANAGER '$PACKAGE_MANAGER';"
+  return 1
 fi
 
 # ─── Derive directory name ────────────────────────────────────────────────────
