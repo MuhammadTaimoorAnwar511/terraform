@@ -4,6 +4,7 @@
 # this script is for node ,packagemanager npm,
 # Note: We omit -e to prevent unintentional shell exit; errors are handled via trap
 # online web: https://www.jdoodle.com/test-bash-shell-script-online
+# chmod 661 <script.sh>
 set -u -o pipefail
 
 # Trap errors and report the current step, but do not kill the interactive shell
