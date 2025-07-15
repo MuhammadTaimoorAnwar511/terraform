@@ -15,22 +15,23 @@ trap error_handler ERR
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 STEP="Setting defaults"
-DEFAULT_GIT_URL="" #git repo url
-DEFAULT_BRANCH="main"  #branch name
-DEFAULT_PM2_NAME="" #pm2 process name
+# ──────────────────────────────────────────────────────────────────────────────
+DEFAULT_GIT_URL=""               # git repo url
+DEFAULT_BRANCH="main"            # branch name
+DEFAULT_PM2_NAME=""              # pm2 process name
 DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip, if you want to attach domain
-DEFAULT_DOMAIN="" # domain name
-DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT-Token), false=public repo
+DEFAULT_DOMAIN=""                # domain name
+DEFAULT_REPO_PRIVATE=false       # true=private repo (use PAT-Token), false=public repo
 DEFAULT_GIT_PAT_TOKEN=""         #"ghp_YourPersonalAccessTokenHere"
+DEFAULT_NODE_VERSION="22"        # Change this to whatever Node version you want (e.g., 18,20, 22, 24)
 DEFAULT_PACKAGE_MANAGER="npm"    # "npm" or "yarn"
-
 # Your .env content (here-doc)
-DEFAULT_ENV_CONTENT="$(cat <<'EOF'
+DEFAULT_ENV_CONTENT="$(cat <<'EOF' 
 PORT=3000
 # add more ENV vars here...
 EOF
 )"
-# ────────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 
 # ─── Parse args or fall back to defaults ──────────────────────────────────────
 STEP="Parsing arguments"
@@ -54,33 +55,51 @@ STEP="Deriving directory name"
 DIR_NAME="$(basename "${GIT_URL%.git}")"
 
 # ─── Install Node (with NVM) & npm ────────────────────────────────────────────
-STEP="Installing Node & npm"
-if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
-  echo "ℹ️  Node or npm not found. Installing NVM + Node LTS..."
-  export NVM_DIR="$HOME/.nvm"
-  if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
-    curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
-  fi
-  # shellcheck source=/dev/null
-  . "$NVM_DIR/nvm.sh"
-  nvm install --lts
+STEP="Installing Node via NVM"
+
+echo "📦 Using Node.js version $DEFAULT_NODE_VERSION"
+
+export NVM_DIR="$HOME/.nvm"
+if [[ ! -s "$NVM_DIR/nvm.sh" ]]; then
+  echo "ℹ️  NVM not found. Installing..."
+  curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.4/install.sh | bash
+fi
+# shellcheck source=/dev/null
+. "$NVM_DIR/nvm.sh"
+
+if ! nvm ls "$DEFAULT_NODE_VERSION" | grep -q "$DEFAULT_NODE_VERSION"; then
+  echo "🔧 Installing Node.js v$DEFAULT_NODE_VERSION"
+  nvm install "$DEFAULT_NODE_VERSION"
 fi
 
-# ─── If using Yarn: ensure it's installed globally ────────────────────────────
+nvm use "$DEFAULT_NODE_VERSION"
+
+# ─── Ensure npm works ────────────────────────────────────────────────────────
+STEP="Verifying npm"
+if ! command -v npm >/dev/null; then
+  echo "❌ npm not found even after Node setup. Exiting..."
+  return 1
+fi
+echo "✅ npm version: $(npm -v)"
+
+# ─── Install Yarn globally if needed ─────────────────────────────────────────
 if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
   STEP="Installing Yarn"
   if ! command -v yarn >/dev/null; then
     echo "ℹ️  Yarn not found. Installing globally via npm..."
     npm install -g yarn
   fi
+  echo "✅ yarn version: $(yarn -v)"
 fi
 
-# ─── Install PM2 globally if missing ─────────────────────────────────────────
+# ─── Install PM2 globally if needed ──────────────────────────────────────────
 STEP="Installing PM2"
 if ! command -v pm2 >/dev/null; then
   echo "ℹ️  PM2 not found. Installing globally..."
   npm install -g pm2
 fi
+echo "✅ pm2 version: $(pm2 -v)"
+
 
 # ─── Clone the repository ────────────────────────────────────────────────────
 STEP="Cloning repository"
