@@ -16,7 +16,7 @@ trap error_handler ERR
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 STEP="Setting defaults"
 DEFAULT_GIT_URL="" #git repo url
-DEFAULT_BRANCH="main"  #branch name
+DEFAULT_BRANCH=""  #branch name
 DEFAULT_PM2_NAME="" #pm2 process name
 DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip, if you want to attach domain
 DEFAULT_DOMAIN="" # domain name
@@ -24,9 +24,9 @@ DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT-Token), false=pub
 DEFAULT_GIT_PAT_TOKEN=""         #"ghp_YourPersonalAccessTokenHere"
 DEFAULT_NODE_VERSION="22"  # 👈 Change this to whatever Node version you want (e.g., 18,20, 22, 24)
 DEFAULT_PACKAGE_MANAGER="npm"    # "npm" or "yarn"
-DEFAULT_PORT=
+DEFAULT_PORT=3000
 DEFAULT_FRONTEND_TYPE="react" #react ,vite, nextjs
-
+DEFAULT_FORCE_BUILD=flase
 # Your .env content (here-doc)
 DEFAULT_ENV_CONTENT="$(cat <<'EOF'
 # add more ENV vars here...
@@ -46,6 +46,8 @@ REPO_PRIVATE="${7:-$DEFAULT_REPO_PRIVATE}"
 PACKAGE_MANAGER="${8:-$DEFAULT_PACKAGE_MANAGER}"
 PORT="${9:-$DEFAULT_PORT}"
 FRONTEND_TYPE="${10:-$DEFAULT_FRONTEND_TYPE}"
+FORCE_BUILD="${11:-$DEFAULT_FORCE_BUILD}"
+
 # Validate package manager choice
 if [[ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" ]]; then
   echo "⚠️  Invalid PACKAGE_MANAGER '$PACKAGE_MANAGER';"
@@ -152,14 +154,69 @@ else
   npm install || return 1
 fi
 
+# ─── Build Project (React/Vite/Next.js) ───────────────────────────────────────
+STEP="Checking and building frontend project"
+echo "🔨 Preparing build for frontend type: $FRONTEND_TYPE using $PACKAGE_MANAGER"
+
+if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
+  BUILD_COMMAND="yarn build"
+else
+  BUILD_COMMAND="npm run build"
+fi
+
+SHOULD_BUILD=true
+
+if [[ "$FORCE_BUILD" == "true" ]]; then
+  echo "🔁 FORCE_BUILD=true: Rebuilding regardless of existing folders."
+else
+  # check if folder exists depending on FRONTEND_TYPE
+  case "$FRONTEND_TYPE" in
+    react)
+      if [[ -d "build" ]]; then
+        echo "✅ Skipping build: 'build/' folder already exists."
+        SHOULD_BUILD=false
+      fi
+      ;;
+    vite)
+      if [[ -d "dist" ]]; then
+        echo "✅ Skipping build: 'dist/' folder already exists."
+        SHOULD_BUILD=false
+      fi
+      ;;
+    nextjs)
+      if [[ -d ".next" ]]; then
+        echo "✅ Skipping build: '.next/' folder already exists."
+        SHOULD_BUILD=false
+      fi
+      ;;
+  esac
+fi
+
+
+if [[ "$SHOULD_BUILD" == true ]]; then
+  echo "📦 Running build: $BUILD_COMMAND"
+  $BUILD_COMMAND || { echo "❌ Build failed"; return 1; }
+fi
+
 # ─── Start application under PM2 ─────────────────────────────────────────────
 STEP="Starting application with PM2"
-echo "🚀 Starting app with PM2 as '$PM2_NAME' using $PACKAGE_MANAGER..."
-if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
-  pm2 start "yarn start" --name "$PM2_NAME" || return 1
-else
-  pm2 start "npm start" --name "$PM2_NAME" || return 1
-fi
+echo "🚀 Starting app with PM2 as '$PM2_NAME' (Frontend: $FRONTEND_TYPE, Package: $PACKAGE_MANAGER)..."
+
+case "$FRONTEND_TYPE" in
+  react)
+    pm2 start "serve -s build -l $PORT" --name "$PM2_NAME" || return 1
+    ;;
+  vite)
+    pm2 start "serve -s dist -l $PORT" --name "$PM2_NAME" || return 1
+    ;;
+  nextjs)
+    if [[ "$PACKAGE_MANAGER" == "yarn" ]]; then
+      PORT=$PORT pm2 start "yarn start" --name "$PM2_NAME" || return 1
+    else
+      PORT=$PORT pm2 start "npm start" --name "$PM2_NAME" || return 1
+    fi
+    ;;
+esac
 
 # ─── Save PM2 process list for resurrect ────────────────────────────────────
 STEP="Saving PM2 process list"
