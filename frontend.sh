@@ -15,23 +15,24 @@ trap error_handler ERR
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 STEP="Setting defaults"
-# ──────────────────────────────────────────────────────────────────────────────
-DEFAULT_GIT_URL=""               # git repo url
-DEFAULT_BRANCH="main"            # branch name
-DEFAULT_PM2_NAME=""              # pm2 process name
+DEFAULT_GIT_URL="" #git repo url
+DEFAULT_BRANCH="main"  #branch name
+DEFAULT_PM2_NAME="" #pm2 process name
 DEFAULT_ATTACH_DOMAIN=false      # true = nginx+certbot, false = skip, if you want to attach domain
-DEFAULT_DOMAIN=""                # domain name
-DEFAULT_REPO_PRIVATE=false       # true=private repo (use PAT-Token), false=public repo
+DEFAULT_DOMAIN="" # domain name
+DEFAULT_REPO_PRIVATE=false        # true=private repo (use PAT-Token), false=public repo
 DEFAULT_GIT_PAT_TOKEN=""         #"ghp_YourPersonalAccessTokenHere"
-DEFAULT_NODE_VERSION="22"        # Change this to whatever Node version you want (e.g., 18,20, 22, 24)
+DEFAULT_NODE_VERSION="22"  # 👈 Change this to whatever Node version you want (e.g., 18,20, 22, 24)
 DEFAULT_PACKAGE_MANAGER="npm"    # "npm" or "yarn"
+DEFAULT_PORT=
+DEFAULT_FRONTEND_TYPE="react" #react ,vite, nextjs
+
 # Your .env content (here-doc)
-DEFAULT_ENV_CONTENT="$(cat <<'EOF' 
-PORT=3000
+DEFAULT_ENV_CONTENT="$(cat <<'EOF'
 # add more ENV vars here...
 EOF
 )"
-# ──────────────────────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────────────
 
 # ─── Parse args or fall back to defaults ──────────────────────────────────────
 STEP="Parsing arguments"
@@ -43,7 +44,8 @@ ATTACH_DOMAIN="${5:-$DEFAULT_ATTACH_DOMAIN}"
 PAT_TOKEN="${6:-$DEFAULT_GIT_PAT_TOKEN}"  
 REPO_PRIVATE="${7:-$DEFAULT_REPO_PRIVATE}"
 PACKAGE_MANAGER="${8:-$DEFAULT_PACKAGE_MANAGER}"
-
+PORT="${9:-$DEFAULT_PORT}"
+FRONTEND_TYPE="${10:-$DEFAULT_FRONTEND_TYPE}"
 # Validate package manager choice
 if [[ "$PACKAGE_MANAGER" != "npm" && "$PACKAGE_MANAGER" != "yarn" ]]; then
   echo "⚠️  Invalid PACKAGE_MANAGER '$PACKAGE_MANAGER';"
@@ -100,6 +102,13 @@ if ! command -v pm2 >/dev/null; then
 fi
 echo "✅ pm2 version: $(pm2 -v)"
 
+# ─── Install serve globally if needed ────────────────────────────────────────
+STEP="Installing serve"
+if ! command -v serve >/dev/null; then
+  echo "ℹ️  serve not found. Installing globally via npm..."
+  npm install -g serve
+fi
+echo "✅ serve version: $(serve --version)"
 
 # ─── Clone the repository ────────────────────────────────────────────────────
 STEP="Cloning repository"
@@ -130,9 +139,9 @@ cd "$DIR_NAME" || return 1
 
 # ─── Create/update .env ──────────────────────────────────────────────────────
 STEP="Creating .env file"
-echo "$DEFAULT_ENV_CONTENT" > .env
+#echo "$DEFAULT_ENV_CONTENT" > .env
 echo "✅ .env created with the following content:"
-cat .env
+#cat .env
 
 # ─── Install project dependencies ────────────────────────────────────────────
 STEP="Installing dependencies"
@@ -184,7 +193,7 @@ server {
     server_name $DOMAIN;
 
     location / {
-        proxy_pass http://localhost:$(grep -oP '(?<=PORT=)\d+' .env);
+        proxy_pass http://localhost:$PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
