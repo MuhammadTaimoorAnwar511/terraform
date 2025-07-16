@@ -145,6 +145,17 @@ STEP="Creating .env file"
 echo "✅ .env created with the following content:"
 #cat .env
 
+# Strip whitespace, blank lines, and comment-only lines
+# STRIPPED_CONTENT="$(echo "$DEFAULT_ENV_CONTENT" | sed '/^\s*$/d' | sed '/^\s*#/d')"
+
+# if [[ -n "$STRIPPED_CONTENT" ]]; then
+#   echo "$DEFAULT_ENV_CONTENT" > .env
+#   echo "✅ .env created with the following content:"
+#   cat .env
+# else
+#   echo "ℹ️ Skipping .env creation (DEFAULT_ENV_CONTENT is empty or only comments/whitespace)."
+# fi
+
 # ─── Install project dependencies ────────────────────────────────────────────
 STEP="Installing dependencies"
 echo "📦 Installing dependencies via $PACKAGE_MANAGER..."
