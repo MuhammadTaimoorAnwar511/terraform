@@ -1,0 +1,127 @@
+name: Deploying <main> Branch
+
+# Change branch name and self‑hosted runner label if needed
+on:
+  push:
+    branches:
+      - <main>
+
+env:
+  # === Change only these values ===
+  PROCESS_NAME: ""
+  PACKAGE_MANAGER: "npm"         # or "yarn"
+  NODE_VERSION: "22"
+  DEFAULT_PORT: ""
+  FRONTEND_TYPE: "react"         # react, vite, nextjs
+  FORCE_BUILD: "true"
+  # === Change only these values ===
+
+jobs:
+  deploy:
+    runs-on: [self-hosted,<taimoor-vm>]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          clean: false
+
+      - name: Ensure NVM, Node.js ${{ env.NODE_VERSION }}, and global tools
+        shell: bash
+        run: |
+          export NVM_DIR="$HOME/.nvm"
+          [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+          # Install desired Node version if missing
+          if ! nvm ls "${{ env.NODE_VERSION }}" >/dev/null 2>&1; then
+            echo "Installing Node.js v${{ env.NODE_VERSION }}..."
+            nvm install "${{ env.NODE_VERSION }}"
+          fi
+          nvm use "${{ env.NODE_VERSION }}"
+
+          # Install yarn if missing
+          if [[ "${{ env.PACKAGE_MANAGER }}" == "yarn" ]] && ! command -v yarn &> /dev/null; then
+            echo "Installing Yarn..."
+            npm install -g yarn
+          fi
+
+          # Install pm2 if missing
+          if ! command -v pm2 &> /dev/null; then
+            echo "Installing PM2..."
+            npm install -g pm2
+          fi
+
+          # Install serve if missing (for React/Vite static hosting)
+          if ! command -v serve &> /dev/null; then
+            echo "Installing serve..."
+            npm install -g serve
+          fi
+
+      - name: Install project dependencies
+        shell: bash
+        run: |
+          STEP="Installing dependencies"
+          echo "📦 Installing dependencies via ${{ env.PACKAGE_MANAGER }}..."
+          if [[ "${{ env.PACKAGE_MANAGER }}" == "yarn" ]]; then
+            yarn install
+          else
+            npm install
+          fi
+
+      - name: Build frontend (if needed)
+        shell: bash
+        run: |
+          STEP="Checking and building frontend"
+          echo "🔨 Preparing build for ${{ env.FRONTEND_TYPE }} using ${{ env.PACKAGE_MANAGER }}"
+
+          # choose build command
+          if [[ "${{ env.PACKAGE_MANAGER }}" == "yarn" ]]; then
+            BUILD_CMD="yarn build"
+          else
+            BUILD_CMD="npm run build"
+          fi
+
+          SHOULD_BUILD=true
+
+          if [[ "${{ env.FORCE_BUILD }}" == "true" ]]; then
+            echo "🔁 FORCE_BUILD=true → rebuilding regardless of existing output."
+          else
+            case "${{ env.FRONTEND_TYPE }}" in
+              react)
+                [[ -d build ]] && echo "✅ build/ exists → skipping." && SHOULD_BUILD=false
+                ;;
+              vite)
+                [[ -d dist ]] && echo "✅ dist/ exists → skipping." && SHOULD_BUILD=false
+                ;;
+              nextjs)
+                [[ -d .next ]] && echo "✅ .next/ exists → skipping." && SHOULD_BUILD=false
+                ;;
+            esac
+          fi
+
+          if [[ "$SHOULD_BUILD" == true ]]; then
+            echo "📦 Running: $BUILD_CMD"
+            $BUILD_CMD
+          fi
+
+      - name: Start application under PM2
+        shell: bash
+        run: |
+          STEP="Starting application with PM2"
+          echo "🚀 Launching '${{ env.PROCESS_NAME }}' on port ${{ env.DEFAULT_PORT }}"
+
+          case "${{ env.FRONTEND_TYPE }}" in
+            react)
+              pm2 start "serve -s build -l ${{ env.DEFAULT_PORT }}" --name "${{ env.PROCESS_NAME }}"
+              ;;
+            vite)
+              pm2 start "serve -s dist -l ${{ env.DEFAULT_PORT }}" --name "${{ env.PROCESS_NAME }}"
+              ;;
+            nextjs)
+              if [[ "${{ env.PACKAGE_MANAGER }}" == "yarn" ]]; then
+                PORT=${{ env.DEFAULT_PORT }} pm2 start "yarn start" --name "${{ env.PROCESS_NAME }}"
+              else
+                PORT=${{ env.DEFAULT_PORT }} pm2 start "npm start" --name "${{ env.PROCESS_NAME }}"
+              fi
+              ;;
+          esac
