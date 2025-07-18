@@ -6,9 +6,9 @@ on:
       - <main>
 env:
   # === Change only these values ===
-  PROCESS_NAME: "Node-npm"
+  PROCESS_NAME: ""
   PACKAGE_MANAGER: "npm"         # or "yarn"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
   # === Change only these values ===
 jobs:
   deploy:    
