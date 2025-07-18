@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# GitHub Actions self-hosted runner installer
+# GitHub Actions self-hosted runner installer - Fully Automated with One-Liner GITHUB_CONFIGURE
 # =============================================================================
 
 set -u -o pipefail
@@ -13,10 +13,11 @@ trap error_handler ERR
 
 # ─── Configuration ───────────────────────────────────────────────────────────
 FOLDER_NAME=""
+RUNNER_NAME=""
 ARCHITECTURE="x64"  # Options: x64, ARM, ARM64
 
-# Replace this with your actual config command:
-GITHUB_CONFIGURE="" #"./config.sh --url --token YOUR_TOKEN"
+# One-line configure command (your style)
+GITHUB_CONFIGURE=""
 
 # ─── Create Runner Directory ─────────────────────────────────────────────────
 STEP="Creating runner directory"
@@ -24,7 +25,7 @@ RUNNER_DIR="actions-runner_${FOLDER_NAME}"
 mkdir -p "${RUNNER_DIR}" && cd "${RUNNER_DIR}"
 echo "✔️ Created and moved into ${RUNNER_DIR}"
 
-# ─── Select Platform and Download ────────────────────────────────────────────
+# ─── Determine Download Target ───────────────────────────────────────────────
 TARBALL=""
 CHECKSUM=""
 
@@ -42,6 +43,7 @@ else
     exit 1
 fi
 
+# ─── Download and Extract Runner ─────────────────────────────────────────────
 STEP="Downloading runner tarball"
 curl -o "$TARBALL" -L "https://github.com/actions/runner/releases/download/v2.326.0/${TARBALL}"
 echo "✔️ Downloaded $TARBALL"
@@ -54,15 +56,17 @@ STEP="Extracting runner"
 tar xzf "./${TARBALL}"
 echo "✔️ Extracted $TARBALL"
 
-# ─── Configure GitHub Runner ─────────────────────────────────────────────────
-STEP="Configuring GitHub Runner"
+# ─── Configure GitHub Runner (Fully Unattended) ──────────────────────────────
+STEP="Configuring GitHub runner"
+FULL_CONFIGURE_CMD="${GITHUB_CONFIGURE} \
+  --unattended \
+  --name ${RUNNER_NAME} \
+  --labels ${RUNNER_NAME} \
+  --work _work"
 
-if [[ -z "$GITHUB_CONFIGURE" ]]; then
-    echo "❌ GITHUB_CONFIGURE variable is empty. Please set it."
-    exit 1
-fi
-
-eval "${GITHUB_CONFIGURE}"
+echo "ℹ️ Running: $FULL_CONFIGURE_CMD"
+eval "$FULL_CONFIGURE_CMD"
+echo "✔️ Runner configured"
 
 # ─── Install and Start as Service ────────────────────────────────────────────
 STEP="Installing runner service"
