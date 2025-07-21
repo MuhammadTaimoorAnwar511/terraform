@@ -1,30 +1,3 @@
-# Multi-stage Dockerfile for react frontend
-
-# Builder stage
-FROM node:18-alpine AS builder
-WORKDIR /app
-
-# Copy manifest and lock files
-COPY package*.json ./
-COPY yarn.lock ./
-RUN yarn install
-
-# Copy all sources
-COPY . .
-RUN yarn build
-
-FROM nginx:alpine AS production
-
-# Copy static assets for serving
-#COPY --from=builder /app/${BUILD_DIR} /usr/share/nginx/html
-COPY --from=builder /app/build /usr/share/nginx/html
-
-# Optional: Copy custom nginx config if needed
-# COPY nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-ubuntu@ip-172-31-83-67:~/React-yarn$ cat script.sh 
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -36,7 +9,7 @@ fi
 # Variables with defaults
 : "${FRONTEND_TYPE:=react}"       # react, vite, or nextjs
 : "${PACKAGE_MANAGER:="yarn"}"
-: "${CONTAINER_PORT:=80}"    # for container app to run on 80 
+: "${CONTAINER_PORT:=80}"    # change it if project is of next js 
 : "${HOST_PORT:=3000}"       # Host port to map to
 : "${DOCKER_IMAGE_NAME:=node-react-app}"
 : "${CONTAINER_NAME:=node-react-container}"
@@ -131,18 +104,18 @@ EOF
   if [ "$PACKAGE_MANAGER" = "yarn" ]; then
     cat >> Dockerfile <<EOF
 COPY --from=builder /app/yarn.lock ./
-RUN yarn install --production
+RUN yarn install
 EOF
   else
     cat >> Dockerfile <<EOF
-RUN npm install --production
+RUN npm install
 EOF
   fi
   cat >> Dockerfile <<EOF
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 
-EXPOSE ${CONTAINER_PORT}
+EXPOSE ${CONTAINER_PORT}    #for nextjs only
 #CMD ["${PACKAGE_MANAGER}", "run", "start"]
 CMD ["sh", "-c", "PORT=${CONTAINER_PORT} ${PACKAGE_MANAGER} run start"]
 EOF
@@ -152,13 +125,12 @@ else
 FROM nginx:alpine AS production
 
 # Copy static assets for serving
-#COPY --from=builder /app/\${BUILD_DIR} /usr/share/nginx/html
 COPY --from=builder /app/${BUILD_DIR} /usr/share/nginx/html
 
 # Optional: Copy custom nginx config if needed
 # COPY nginx.conf /etc/nginx/nginx.conf
 
-EXPOSE 80
+EXPOSE 80 # for react and vite only
 CMD ["nginx", "-g", "daemon off;"]
 EOF
 fi
@@ -178,5 +150,5 @@ echo "🔧 To run your container:"
 if [ "$FRONTEND_TYPE" = "nextjs" ]; then
   echo "    docker run -d -p ${HOST_PORT}:${CONTAINER_PORT} --name ${CONTAINER_NAME} ${DOCKER_IMAGE_NAME}"
 else
-  echo "    docker run -d -p ${HOST_PORT}:${CONTAINER_PORT} --name ${CONTAINER_NAME} ${DOCKER_IMAGE_NAME}"
+  echo "    docker run -d -p ${HOST_PORT}:80 --name ${CONTAINER_NAME} ${DOCKER_IMAGE_NAME}" 
 fi
