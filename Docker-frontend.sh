@@ -9,7 +9,7 @@ fi
 # Variables with defaults
 : "${FRONTEND_TYPE:=react}"       # react, vite, or nextjs
 : "${PACKAGE_MANAGER:="yarn"}"
-: "${CONTAINER_PORT:=80}"    # change it if project is of next js 
+: "${CONTAINER_PORT:=80}"    # change it if project is of next js other wise use 80
 : "${HOST_PORT:=3000}"       # Host port to map to
 : "${DOCKER_IMAGE_NAME:=node-react-app}"
 : "${CONTAINER_NAME:=node-react-container}"
