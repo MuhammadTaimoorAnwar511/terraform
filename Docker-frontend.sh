@@ -1,43 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Load .env if present
-if [ -f .env ]; then
-  export $(grep -v '^\s*#' .env | xargs)
-fi
-
 # Variables with defaults
-: "${FRONTEND_TYPE:=react}"       # react, vite, or nextjs
-: "${PACKAGE_MANAGER:="yarn"}"
+: "${FRONTEND_TYPE:=}"       # react, vite, or nextjs
+: "${PACKAGE_MANAGER:="npm"}"
 : "${CONTAINER_PORT:=80}"    # change it if project is of next js other wise use 80
 : "${HOST_PORT:=3000}"       # Host port to map to
-: "${DOCKER_IMAGE_NAME:=node-react-app}"
-: "${CONTAINER_NAME:=node-react-container}"
-
-# Auto-detect PACKAGE_MANAGER if not set in .env
-if [ -z "$PACKAGE_MANAGER" ]; then
-  if [ -f yarn.lock ]; then
-    PACKAGE_MANAGER="yarn"
-  else
-    PACKAGE_MANAGER="npm"
-  fi
-  echo "ℹ️  Auto-detected PACKAGE_MANAGER=${PACKAGE_MANAGER}"
-fi
-
-# Auto-detect FRONTEND_TYPE if not provided
-if [ -z "$FRONTEND_TYPE" ]; then
-  if grep -q 'react-scripts' package.json; then
-    FRONTEND_TYPE="react"
-  elif grep -q 'vite' package.json; then
-    FRONTEND_TYPE="vite"
-  elif grep -q 'next' package.json; then
-    FRONTEND_TYPE="nextjs"
-  else
-    echo "❌ Could not auto-detect FRONTEND_TYPE. Please set FRONTEND_TYPE=react|vite|nextjs in .env or as env var."
-    exit 1
-  fi
-  echo "ℹ️  Auto-detected FRONTEND_TYPE=${FRONTEND_TYPE}"
-fi
+: "${DOCKER_IMAGE_NAME:=npm-react-app}"
+: "${CONTAINER_NAME:=npm-react-container}"
 
 echo "🚀 Generating Dockerfile for ${FRONTEND_TYPE} frontend..."
 
@@ -114,8 +84,8 @@ EOF
   cat >> Dockerfile <<EOF
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-
-EXPOSE ${CONTAINER_PORT}    #for nextjs only
+#FOR nextjs only
+EXPOSE ${CONTAINER_PORT}    
 #CMD ["${PACKAGE_MANAGER}", "run", "start"]
 CMD ["sh", "-c", "PORT=${CONTAINER_PORT} ${PACKAGE_MANAGER} run start"]
 EOF
@@ -123,14 +93,13 @@ else
   cat >> Dockerfile <<EOF
 
 FROM nginx:alpine AS production
-
 # Copy static assets for serving
 COPY --from=builder /app/${BUILD_DIR} /usr/share/nginx/html
 
 # Optional: Copy custom nginx config if needed
 # COPY nginx.conf /etc/nginx/nginx.conf
-
-EXPOSE 80 # for react and vite only
+# for react and vite only
+EXPOSE 80 
 CMD ["nginx", "-g", "daemon off;"]
 EOF
 fi
@@ -144,7 +113,7 @@ echo "✅ Multi-stage Dockerfile generated for ${FRONTEND_TYPE} frontend."
 echo
 # Build & Run instructions
 echo "🔧 To build your image:"
-echo "    docker build -t ${DOCKER_IMAGE_NAME} ."
+echo "    docker buildx build -t ${DOCKER_IMAGE_NAME} ."
 echo
 echo "🔧 To run your container:"
 if [ "$FRONTEND_TYPE" = "nextjs" ]; then
