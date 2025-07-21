@@ -143,7 +143,8 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 
 EXPOSE ${CONTAINER_PORT}
-CMD ["${PACKAGE_MANAGER}", "run", "start"]
+#CMD ["${PACKAGE_MANAGER}", "run", "start"]
+CMD ["sh", "-c", "PORT=${CONTAINER_PORT} ${PACKAGE_MANAGER} run start"]
 EOF
 else
   cat >> Dockerfile <<EOF
