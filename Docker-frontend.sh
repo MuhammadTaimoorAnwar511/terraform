@@ -3,19 +3,19 @@ set -euo pipefail
 
 # Variables with defaults
 : "${FRONTEND_TYPE:=}"       # react, vite, or nextjs
-: "${PACKAGE_MANAGER:="npm"}"
+: "${PACKAGE_MANAGER:=""}"
 : "${CONTAINER_PORT:=80}"    # change it if project is of next js other wise use 80
 : "${HOST_PORT:=3000}"       # Host port to map to
-: "${DOCKER_IMAGE_NAME:=npm-react-app}"
-: "${CONTAINER_NAME:=npm-react-container}"
-
+: "${DOCKER_IMAGE_NAME:=}"
+: "${CONTAINER_NAME:=}"
+: "${NODE_VERSION:=22}"
 echo "🚀 Generating Dockerfile for ${FRONTEND_TYPE} frontend..."
 
 cat > Dockerfile <<EOF
 # Multi-stage Dockerfile for ${FRONTEND_TYPE} frontend
 
 # Builder stage
-FROM node:18-alpine AS builder
+FROM node:${NODE_VERSION}-alpine AS builder
 WORKDIR /app
 
 # Copy manifest and lock files
@@ -25,6 +25,7 @@ EOF
 if [ "$PACKAGE_MANAGER" = "yarn" ]; then
   cat >> Dockerfile <<EOF
 COPY yarn.lock ./
+# RUN yarn install --production --frozen-lockfile
 RUN yarn install
 EOF
 else
@@ -65,7 +66,7 @@ esac
 if [ "$FRONTEND_TYPE" = "nextjs" ]; then
   cat >> Dockerfile <<EOF
 
-FROM node:18-alpine AS production
+FROM node:${NODE_VERSION}-alpine AS production
 WORKDIR /app
 
 # Copy built code and production dependencies
